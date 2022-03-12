@@ -567,6 +567,7 @@ if __name__ == "__main__":
     model_dict_path = os.path.join(project_path, "mynet_parameters_v1.pt")
     model_path = os.path.join(project_path, "mynet_v1.pt")
     train_mynet(
+        df_train,
         learning_rate,
         num_epoch,
         batch_size,
