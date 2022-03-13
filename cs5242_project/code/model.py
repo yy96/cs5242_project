@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import os
 from tqdm import tqdm
 
-from data import generate_negative_example, read_pdb
+from data import generate_negative_example, read_pdb, make_data
 from feature import one_hot_protein, one_hot_smiles
 
 
@@ -465,32 +465,6 @@ class CustomDataset(Dataset):
         return out_ligand, out_protein, target
 
 
-def make_data(df_pair, negative_ratio, train_ratio):
-    df_pair = pd.read_csv(os.path.join(data_path, "pair.csv"))
-    num_positive = len(df_pair)
-    df_positive = df_pair.copy()
-    df_positive["target"] = 1
-    df_train_positive = df_positive.iloc[
-        0 : int(np.floor(num_positive * train_ratio)), :
-    ]
-    df_validation_positive = df_positive.iloc[
-        int(np.floor(num_positive * train_ratio)) :, :
-    ]
-    df_train_negative = generate_negative_example(
-        df_train_positive, df_ligands, negative_ratio, 0
-    )
-    df_validation_negative = generate_negative_example(
-        df_validation_positive, df_ligands, 2, 0
-    )
-
-    df_train = pd.concat([df_train_positive, df_train_negative])
-    df_test = pd.concat([df_validation_positive, df_validation_negative])
-    df_train.reset_index(inplace=True)
-    df_test.reset_index(inplace=True)
-
-    return df_train, df_test
-
-
 def train_mynet(
     df_train,
     learning_rate,
@@ -552,9 +526,7 @@ def train_mynet(
 if __name__ == "__main__":
     print("--------- reading data ---------")
     data_path = os.path.join(project_path, "dataset_20220217_2")
-    df_ligands = pd.read_csv(os.path.join(data_path, "ligand.csv"))
-    df_pair = pd.read_csv(os.path.join(data_path, "pair.csv"))
-    df_train, df_test = make_data(df_pair, 2, 0.8)
+    df_train, df_test = make_data(data_path, 2, 0.8)
     df_train.to_csv(os.path.join(data_path, "train.csv"))
     df_test.to_csv(os.path.join(data_path, "test.csv"))
     df_train = df_train.sample(frac=1).reset_index(drop=True)

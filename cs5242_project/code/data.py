@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 
 
 def read_pdb(filename: str):
@@ -43,3 +44,30 @@ def generate_negative_example(df_pairs, df_ligands, ratio, seed):
     )
 
     return df_out
+
+
+def make_data(data_path, negative_ratio, train_ratio):
+    df_pair = pd.read_csv(os.path.join(data_path, "pair.csv"))
+    df_ligands = pd.read_csv(os.path.join(data_path, "ligand.csv"))
+    num_positive = len(df_pair)
+    df_positive = df_pair.copy()
+    df_positive["target"] = 1
+    df_train_positive = df_positive.iloc[
+        0 : int(np.floor(num_positive * train_ratio)), :
+    ]
+    df_validation_positive = df_positive.iloc[
+        int(np.floor(num_positive * train_ratio)) :, :
+    ]
+    df_train_negative = generate_negative_example(
+        df_train_positive, df_ligands, negative_ratio, 0
+    )
+    df_validation_negative = generate_negative_example(
+        df_validation_positive, df_ligands, 2, 0
+    )
+
+    df_train = pd.concat([df_train_positive, df_train_negative])
+    df_test = pd.concat([df_validation_positive, df_validation_negative])
+    df_train.reset_index(inplace=True)
+    df_test.reset_index(inplace=True)
+
+    return df_train, df_test
