@@ -6,12 +6,18 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 import os
 from tqdm import tqdm
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_curve,
+    auc,
+    log_loss,
+)
 
 from data import generate_negative_example, read_pdb, make_data
 from feature import one_hot_protein, one_hot_smiles
-
-
-project_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
 
 # inception block
 class Conv2dLayer(nn.Module):
@@ -440,111 +446,48 @@ class MyNet(nn.Module):
         return self.forward(p, l)
 
 
-class CustomDataset(Dataset):
-    def __init__(self, df_pair, df_ligands, path):
-        self.df_pair = df_pair
-        self.df_ligands = df_ligands
-        self.path = path
-
-    def __len__(self):
-        return len(self.df_pair)
-
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-
-        pid = self.df_pair["PID"][idx]
-        lid = self.df_pair["LID"][idx]
-        target = np.array([self.df_pair["target"][idx]])
-
-        out_ligand = one_hot_smiles(
-            self.df_ligands[self.df_ligands["LID"] == lid]["Smiles"].values[0]
-        )
-        X_list, Y_list, Z_list, atomtype_list = read_pdb(f"{self.path}/{pid}.pdb")
-        out_protein = one_hot_protein(atomtype_list)
-        return out_ligand, out_protein, target
-
-
-def train_mynet(
-    df_train,
-    learning_rate,
-    num_epoch,
-    batch_size,
-    dropout_alpha,
-    project_path,
-    model_dict_path,
-    model_path,
-):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = MyNet(dropout_alpha, device).to(device)
-    criterion = nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    pdb_path = os.path.join(data_path, "pdbs")
-    custom_dataset = CustomDataset(df_train, df_ligands, pdb_path)
-    trainloader = DataLoader(
-        custom_dataset, batch_size=batch_size, shuffle=True, num_workers=1
-    )
-
-    loss_log = []
-    for epoch in tqdm(range(num_epoch)):
-        running_loss = 0.0
-        for i, data in enumerate(trainloader, 0):
-            print(f"training on index {i}")
+def validation_result(validloader, model, device):
+    target_ls = []
+    preds_ls = []
+    preds_threshold_ls = []
+    with torch.no_grad():
+        for data in validloader:
             ligand = data[0].to(device)
             protein = data[1].to(device)
             target = data[2].to(device).float()
 
-            optimizer.zero_grad()
-            outputs = model(protein.float(), ligand.float())  # .long()
-            loss = criterion(outputs, target)
-            loss.backward()
-            optimizer.step()
-            loss_log.append(loss.item())
-            running_loss += loss.item()
-            # if (i + 1) % batch_size == 0:
-            print(
-                "epoch {:3d} | {:5d} batches loss: {:.4f}".format(
-                    epoch, i + 1, running_loss / 128
-                )
+            preds = model(protein.float(), ligand.float())
+
+            preds_threshold = torch.where(
+                preds <= torch.tensor(0.5).double(),
+                torch.tensor(0).double(),
+                torch.tensor(1).double(),
             )
-            running_loss = 0.0
-        torch.save(
-            {
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "loss": loss,
-            },
-            os.path.join(project_path, f"mynet_checkpoint_{epoch}.pt"),
+
+            target_ls.append(target.numpy())
+            preds_ls.append(preds.numpy())
+            preds_threshold_ls.append(preds_threshold.numpy())
+
+        final_target = np.concatenate(target_ls)
+        final_preds = np.concatenate(preds_ls)
+        final_preds_threshold = np.concatenate(preds_threshold_ls)
+
+        accuracy = accuracy_score(final_target, final_preds_threshold)
+        f1 = f1_score(final_target, final_preds_threshold)
+        precision = precision_score(final_target, final_preds_threshold)
+        recall = recall_score(final_target, final_preds_threshold)
+        fpr, tpr, thresholds = roc_curve(final_target, final_preds, pos_label=2)
+        auc_score = auc(fpr, tpr)
+        logloss_score = log_loss(final_target, final_preds)
+
+        print(
+            f"------ Accuracy: {accuracy}  F1: {f1}  precision: {precision}  recall:{recall}   auc:{auc_score}  logloss:{logloss_score}------"
         )
-    print("Finished training!")
-    torch.save(model.state_dict(), model_dict_path)
-    torch.save(model, model_path)
-    return loss_log, model
 
-
-if __name__ == "__main__":
-    print("--------- reading data ---------")
-    data_path = os.path.join(project_path, "dataset_20220217_2")
-    df_train, df_test = make_data(data_path, 2, 0.8)
-    df_train.to_csv(os.path.join(data_path, "train.csv"))
-    df_test.to_csv(os.path.join(data_path, "test.csv"))
-    df_train = df_train.sample(frac=1).reset_index(drop=True)
-
-    print("--------- training ---------")
-    num_epoch = 1  # 300
-    batch_size = 128
-    dropout_alpha = 0.5
-    learning_rate = 0.0001
-    model_dict_path = os.path.join(project_path, "mynet_parameters_v1.pt")
-    model_path = os.path.join(project_path, "mynet_v1.pt")
-    train_mynet(
-        df_train,
-        learning_rate,
-        num_epoch,
-        batch_size,
-        dropout_alpha,
-        project_path,
-        model_dict_path,
-        model_path,
-    )
+        return {
+            "accuracy": accuracy,
+            "F1": f1,
+            "recall": recall,
+            "auc": auc_score,
+            "logloss": logloss_score,
+        }
