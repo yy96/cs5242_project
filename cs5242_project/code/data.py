@@ -46,7 +46,7 @@ def generate_negative_example(df_pairs, df_ligands, ratio, seed):
     return df_out
 
 
-def make_data(data_path, negative_ratio, train_ratio):
+def make_data(data_path, negative_ratio, train_ratio, valid_ratio, save=True):
     df_pair = pd.read_csv(os.path.join(data_path, "pair.csv"))
     df_ligands = pd.read_csv(os.path.join(data_path, "ligand.csv"))
     num_positive = len(df_pair)
@@ -56,18 +56,42 @@ def make_data(data_path, negative_ratio, train_ratio):
         0 : int(np.floor(num_positive * train_ratio)), :
     ]
     df_validation_positive = df_positive.iloc[
-        int(np.floor(num_positive * train_ratio)) :, :
+        int(np.floor(num_positive * train_ratio)) : int(
+            np.floor(num_positive * (train_ratio + valid_ratio))
+        ),
+        :,
+    ]
+    df_test_positive = df_positive.iloc[
+        int(np.floor(num_positive * (train_ratio + valid_ratio))) :,
+        :,
     ]
     df_train_negative = generate_negative_example(
         df_train_positive, df_ligands, negative_ratio, 0
     )
     df_validation_negative = generate_negative_example(
-        df_validation_positive, df_ligands, 2, 0
+        df_validation_positive, df_ligands, negative_ratio, 0
+    )
+    df_test_negative = generate_negative_example(
+        df_test_positive, df_ligands, negative_ratio, 0
     )
 
     df_train = pd.concat([df_train_positive, df_train_negative])
-    df_test = pd.concat([df_validation_positive, df_validation_negative])
-    df_train.reset_index(inplace=True)
-    df_test.reset_index(inplace=True)
+    df_validation = pd.concat([df_validation_positive, df_validation_negative])
+    df_test = pd.concat([df_test_positive, df_test_negative])
+    df_train = df_train.sample(frac=1).reset_index(drop=True)
+    df_validation = df_validation.sample(frac=1).reset_index(drop=True)
+    df_test = df_test.sample(frac=1).reset_index(drop=True)
 
-    return df_train, df_test
+    if save:
+        df_train.to_csv(f"{data_path}/train.csv")
+        df_validation.to_csv(f"{data_path}/validation.csv")
+        df_test.to_csv(f"{data_path}/test.csv")
+
+    return df_train, df_validation, df_test
+
+
+if __name__ == "__main__":
+    project_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
+    data_path = os.path.join(project_path, "dataset_20220217_2")
+
+    make_data(data_path, 2, 0.8, 0.1)
