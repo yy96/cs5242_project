@@ -110,7 +110,7 @@ def one_hot_smiles(line, MAX_SMI_LEN=200):
     return X
 
 
-def one_hot_protein(line, MAX_SEQ_LEN=1200):
+def one_hot_protein(line, MAX_SEQ_LEN=4300):
     X = np.zeros((1, MAX_SEQ_LEN, len(PROTSET)))
     for i, ch in enumerate(line[:MAX_SEQ_LEN]):
         tmp = PROTSET.get(ch)

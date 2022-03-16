@@ -83,9 +83,13 @@ def make_data(data_path, negative_ratio, train_ratio, valid_ratio, save=True):
     df_test = df_test.sample(frac=1).reset_index(drop=True)
 
     if save:
-        df_train.to_csv(f"{data_path}/train.csv")
-        df_validation.to_csv(f"{data_path}/validation.csv")
-        df_test.to_csv(f"{data_path}/test.csv")
+        df_train.to_csv(f"{data_path}/train_neg{negative_ratio}_perct{train_ratio}.csv")
+        df_validation.to_csv(
+            f"{data_path}/validation_neg{negative_ratio}_perct{valid_ratio}.csv"
+        )
+        df_test.to_csv(
+            f"{data_path}/test_neg{negative_ratio}_perct{round(1-train_ratio-valid_ratio, 1)}.csv"
+        )
 
     return df_train, df_validation, df_test
 
@@ -94,4 +98,4 @@ if __name__ == "__main__":
     project_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
     data_path = os.path.join(project_path, "dataset_20220217_2")
 
-    make_data(data_path, 2, 0.8, 0.1)
+    make_data(data_path, 2, 0.05, 0.05)

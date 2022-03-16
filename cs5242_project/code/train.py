@@ -42,7 +42,7 @@ def train_mynet(
     df_train,
     df_test,
     df_ligands,
-    learning_rate,
+    max_learning_rate,
     num_epoch,
     batch_size,
     dropout_alpha,
@@ -62,10 +62,14 @@ def train_mynet(
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = MyNet(dropout_alpha, device).to(device)
     criterion = nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    # optimizer = torch.optim.AdamW(model.parameters())
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=5e-3, epochs=num_epoch,
-    #                                           steps_per_epoch=len(trainloader))
+    # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters())
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=max_learning_rate,
+        epochs=num_epoch,
+        steps_per_epoch=len(trainloader),
+    )
 
     best_epoch = -1
     best_val_loss = 100000000
@@ -82,7 +86,7 @@ def train_mynet(
             loss = criterion(outputs, target)
             loss.backward()
             optimizer.step()
-            # scheduler.step()
+            scheduler.step()
 
             print("epoch {:3d} | {:5d} batches loss: {:.4f}".format(epoch, i + 1, loss))
             loss_ls.append(loss)
@@ -108,16 +112,18 @@ if __name__ == "__main__":
     # df_train.to_csv(os.path.join(data_path, "train.csv"))
     # df_validation.to_csv(os.path.join(data_path, "validation.csv"))
     # df_test.to_csv(os.path.join(data_path, "test.csv"))
-    df_train = pd.read_csv(os.path.join(data_path, "train.csv"))
-    df_validation = pd.read_csv(os.path.join(data_path, "validation.csv"))
-    df_test = pd.read_csv(os.path.join(data_path, "test.csv"))
+    df_train = pd.read_csv(os.path.join(data_path, "train_neg2_perct0.05.csv"))
+    df_validation = pd.read_csv(
+        os.path.join(data_path, "validation_neg2_perct0.05.csv")
+    )
+    df_test = pd.read_csv(os.path.join(data_path, "test_neg2_perct0.9.csv"))
     # df_train = df_train.sample(frac=1).reset_index(drop=True)
 
     print("--------- training ---------")
     num_epoch = 1  # 300
     batch_size = 128
     dropout_alpha = 0.5
-    learning_rate = 0.0001
+    max_learning_rate = 5e-3
     model_path = os.path.join(project_path, "mynet_v1.pt")  # to be updated
     df_ligands = pd.read_csv(os.path.join(data_path, "ligand.csv"))
     save_best_epoch = 5
@@ -125,7 +131,7 @@ if __name__ == "__main__":
         df_train=df_train,
         df_test=df_validation,
         df_ligands=df_ligands,
-        learning_rate=learning_rate,
+        max_learning_rate=max_learning_rate,
         num_epoch=num_epoch,
         batch_size=batch_size,
         dropout_alpha=dropout_alpha,
