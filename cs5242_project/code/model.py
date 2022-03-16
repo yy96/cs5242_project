@@ -11,8 +11,7 @@ from sklearn.metrics import (
     f1_score,
     precision_score,
     recall_score,
-    roc_curve,
-    auc,
+    roc_auc_score,
     log_loss,
 )
 
@@ -279,7 +278,7 @@ class MyNet(nn.Module):
             pass
         else:
             protein_blocks.append(nn.Flatten(start_dim=1, end_dim=-1))
-            protein_blocks.append(nn.Linear(23232, 1024))  # identify input_shape here
+            protein_blocks.append(nn.Linear(83776, 1024))  # identify input_shape here
             protein_blocks.append(nn.ReLU())
         protein_blocks.append(nn.Dropout(self.alpha))
         self.protein_blocks = nn.Sequential(*protein_blocks)
@@ -476,8 +475,7 @@ def validation_result(validloader, model, device):
         f1 = f1_score(final_target, final_preds_threshold)
         precision = precision_score(final_target, final_preds_threshold)
         recall = recall_score(final_target, final_preds_threshold)
-        fpr, tpr, thresholds = roc_curve(final_target, final_preds, pos_label=2)
-        auc_score = auc(fpr, tpr)
+        auc_score = roc_auc_score(final_target, final_preds)
         logloss_score = log_loss(final_target, final_preds)
 
         print(
