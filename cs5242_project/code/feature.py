@@ -119,3 +119,67 @@ def one_hot_protein(line, MAX_SEQ_LEN=4300):
         # else:
         #     print("exits not in PROTSET character", ch)
     return X
+
+
+def convert_protein_list_to_matrix(X_list, Y_list, Z_list):
+    protein_coords = np.concatenate(
+        (
+            np.array(X_list).reshape(-1, 1),
+            np.array(Y_list).reshape(-1, 1),
+            np.array(Z_list).reshape(-1, 1),
+        ),
+        axis=1,
+    )
+    return protein_coords
+
+
+def read_pdb_group(filename: str):
+    """Read a protein file to get four atom information lists.
+
+    You can copy this function to your project code.
+    """
+    with open(filename, "r") as file:
+        strline_L = file.readlines()
+    strline_L = [strline.strip() for strline in strline_L]
+
+    X_list = [float(strline.split()[-3]) for strline in strline_L]
+    Y_list = [float(strline.split()[-2]) for strline in strline_L]
+    Z_list = [float(strline.split()[-1]) for strline in strline_L]
+    atomtype_list = [strline.split()[-7][0] for strline in strline_L]
+    atomgroup_list = [strline.split()[-4] for strline in strline_L]
+
+    return X_list, Y_list, Z_list, atomtype_list, atomgroup_list
+
+
+def process_protein_group(pid, pid_path, df_centroids, max_length=540):
+    X_list, Y_list, Z_list, atomtype_list, atomgroup_list = read_pdb_group(
+        f"{pid_path}/{pid}.pdb"
+    )
+    unique_group, group_index = np.unique(atomgroup_list, return_index=True)
+    group_coords_X = [X_list[i] for i in group_index]
+    group_coords_Y = [Y_list[i] for i in group_index]
+    group_coords_Z = [Z_list[i] for i in group_index]
+    atomtype_list = [atomtype_list[i] for i in group_index]
+    atomtype_list = [PROTSET[i] if i in PROTSET.keys() else -1 for i in atomtype_list]
+
+    protein_coords = convert_protein_list_to_matrix(
+        group_coords_X, group_coords_Y, group_coords_Z
+    )
+    centroid_coordinate = df_centroids[df_centroids["PID"] == pid].iloc[0, 1:4].values
+    euclidean_dist = np.sum(np.square(protein_coords - centroid_coordinate), axis=1)
+
+    combined_matrix = np.column_stack(
+        (group_coords_X, group_coords_Y, group_coords_Z, atomtype_list, euclidean_dist)
+    )
+
+    if max_length - combined_matrix.shape[0] >= 0:
+        combined_matrix_pad = np.pad(
+            combined_matrix,
+            [(0, max_length - combined_matrix.shape[0]), (0, 0)],
+            mode="constant",
+            constant_values=0,
+        )
+    else:
+        combined_matrix_pad = combined_matrix[0:max_length, :]
+
+    return combined_matrix_pad.astype(float)
