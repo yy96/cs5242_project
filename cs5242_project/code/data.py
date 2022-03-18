@@ -49,6 +49,16 @@ def generate_negative_example(df_pairs, df_ligands, ratio, seed):
 def make_data(data_path, negative_ratio, train_ratio, valid_ratio, save=True):
     df_pair = pd.read_csv(os.path.join(data_path, "pair.csv"))
     df_ligands = pd.read_csv(os.path.join(data_path, "ligand.csv"))
+    df_centroids = pd.read_csv(os.path.join(data_path, "centroids.csv"))
+
+    # remove th pair that have NA inputs in centroids
+    df_centroids = df_centroids[
+        (~df_centroids["x"].isna())
+        & (~df_centroids["y"].isna())
+        & (~df_centroids["z"].isna())
+    ]
+    df_pair = df_pair.loc[df_pair["PID"].isin(df_centroids["PID"])]
+
     num_positive = len(df_pair)
     df_positive = df_pair.copy()
     df_positive["target"] = 1
@@ -98,4 +108,4 @@ if __name__ == "__main__":
     project_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
     data_path = os.path.join(project_path, "dataset_20220217_2")
 
-    make_data(data_path, 2, 0.05, 0.05)
+    make_data(data_path, 2, 0.8, 0.1)

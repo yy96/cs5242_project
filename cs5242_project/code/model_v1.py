@@ -7,8 +7,8 @@ import torch.nn.functional as F
 import os
 from tqdm import tqdm
 
-from data import generate_negative_example, read_pdb, make_data
-from feature import one_hot_protein, one_hot_smiles
+from code.data import generate_negative_example, read_pdb, make_data
+from code.feature import one_hot_protein, one_hot_smiles
 
 # inception block
 class Conv2dLayer(nn.Module):
