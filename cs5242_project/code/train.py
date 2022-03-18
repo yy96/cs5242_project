@@ -11,6 +11,7 @@ from code.model_v1 import MyNet
 from code.model_v2 import MyProNet
 from code.model_v3 import MyProInceptionNet
 from code.MyDilatedNet import MyDilatedNet
+from code.MyDilatedVoxelNet import MyDilatedVoxelNet
 from code.model_utils import validation_result
 from code.feature import (
     one_hot_protein,
@@ -18,6 +19,7 @@ from code.feature import (
     process_protein_group,
     process_protein_group_onehot,
     process_protein_group_onehot_dist,
+    process_protein_voxel,
 )
 from code.data import generate_negative_example, read_pdb, make_data
 
@@ -118,6 +120,40 @@ class CustomDataset_v3(Dataset):
         return out_ligand, out_protein, target
 
 
+class CustomDataset_v4(Dataset):
+    def __init__(
+        self, df_pair, df_ligands, df_centroids, path, distance=False, sort=False
+    ):
+        self.df_pair = df_pair
+        self.df_ligands = df_ligands
+        self.df_centroids = df_centroids
+        self.path = path
+        self.distance = distance
+        self.sort = sort
+
+    def __len__(self):
+        return len(self.df_pair)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        pid = self.df_pair["PID"][idx]
+        lid = self.df_pair["LID"][idx]
+        target = np.array([self.df_pair["target"][idx]])
+
+        out_ligand = one_hot_smiles(
+            self.df_ligands[self.df_ligands["LID"] == lid]["Smiles"].values[0]
+        )
+        out_ligand = out_ligand.reshape(200, -1)
+
+        out_protein = process_protein_voxel(
+            pid, self.path, MAX_DIST=20, GRID_RESOLUTION=1
+        )
+
+        return out_ligand, out_protein, target
+
+
 def train(
     name,
     df_train,
@@ -181,6 +217,16 @@ def train(
             test_dataset, batch_size=batch_size, shuffle=True, num_workers=1
         )
         model = MyDilatedNet().to(device)
+    elif name == "mydilatedvoxelnet":
+        train_dataset = CustomDataset_v4(df_train, df_ligands, df_centroids, pdb_path)
+        trainloader = DataLoader(
+            train_dataset, batch_size=batch_size, shuffle=True, num_workers=1
+        )
+        test_dataset = CustomDataset_v4(df_test, df_ligands, df_centroids, pdb_path)
+        testloader = DataLoader(
+            test_dataset, batch_size=batch_size, shuffle=True, num_workers=1
+        )
+        model = MyDilatedVoxelNet().to(device)
     else:
         raise NotImplementedError
 
