@@ -111,7 +111,7 @@ class CustomDataset_v3(Dataset):
             out_protein = process_protein_group_onehot_dist(
                 pid, self.path, self.df_centroids, sort=False
             )
-        elif not self.distance:
+        elif not self.sort and not self.distance:
             out_protein = process_protein_group_onehot(pid, self.path)
 
         out_protein = out_protein.reshape(540, -1)
@@ -168,11 +168,15 @@ def train(
         )
         model = MyProInceptionNet().to(device)
     elif name == "mydilatednet":
-        train_dataset = CustomDataset_v3(df_train, df_ligands, df_centroids, pdb_path)
+        train_dataset = CustomDataset_v3(
+            df_train, df_ligands, df_centroids, pdb_path, distance=distance, sort=sort
+        )
         trainloader = DataLoader(
             train_dataset, batch_size=batch_size, shuffle=True, num_workers=1
         )
-        test_dataset = CustomDataset_v3(df_test, df_ligands, df_centroids, pdb_path)
+        test_dataset = CustomDataset_v3(
+            df_test, df_ligands, df_centroids, pdb_path, distance=distance, sort=sort
+        )
         testloader = DataLoader(
             test_dataset, batch_size=batch_size, shuffle=True, num_workers=1
         )
@@ -235,7 +239,7 @@ def train(
 def main(name, model_path_name, num_epoch, distance=False, sort=False):
     print("--------- reading data ---------")
     data_path = os.path.join(project_path, "dataset_20220217_2")
-    df_train = pd.read_csv(os.path.join(data_path, "train_neg2_perct0.05.csv"))
+    df_train = pd.read_csv(os.path.join(data_path, "train_neg2_perct0.8.csv"))
     df_validation = pd.read_csv(os.path.join(data_path, "validation_neg2_perct0.1.csv"))
     df_test = pd.read_csv(os.path.join(data_path, "test_neg2_perct0.1.csv"))
     # df_train = df_train.sample(frac=1).reset_index(drop=True)
