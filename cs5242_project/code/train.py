@@ -204,38 +204,6 @@ def main(name, model_path_name, num_epoch):
         model_path=model_path,
         save_best_epoch=save_best_epoch,
     )
-    # elif model == "mypronet":
-    #     train_pronet(
-    #         df_train=df_train,
-    #         df_test=df_validation,
-    #         df_ligands=df_ligands,
-    #         df_centroids=df_centriods,
-    #         learning_rate=learning_rate,
-    #         max_learning_rate=max_learning_rate,
-    #         num_epoch=num_epoch,
-    #         batch_size=batch_size,
-    #         dropout_alpha=dropout_alpha,
-    #         data_path=data_path,
-    #         model_path=model_path,
-    #         save_best_epoch=save_best_epoch,
-    #     )
-    # elif model == "myinceptionnet":
-    #     train_myinceptionnet(
-    #         df_train=df_train,
-    #         df_test=df_validation,
-    #         df_ligands=df_ligands,
-    #         df_centroids=df_centriods,
-    #         learning_rate=learning_rate,
-    #         max_learning_rate=max_learning_rate,
-    #         num_epoch=num_epoch,
-    #         batch_size=batch_size,
-    #         dropout_alpha=dropout_alpha,
-    #         data_path=data_path,
-    #         model_path=model_path,
-    #         save_best_epoch=save_best_epoch,
-    #     )
-    # else:
-    #     raise NotImplementedError
 
 
 if __name__ == "__main__":
