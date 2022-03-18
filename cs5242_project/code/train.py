@@ -10,8 +10,15 @@ import click
 from code.model_v1 import MyNet
 from code.model_v2 import MyProNet
 from code.model_v3 import MyProInceptionNet
+from code.MyDilatedNet import MyDilatedNet
 from code.model_utils import validation_result
-from code.feature import one_hot_protein, one_hot_smiles, process_protein_group
+from code.feature import (
+    one_hot_protein,
+    one_hot_smiles,
+    process_protein_group,
+    process_protein_group_onehot,
+    process_protein_group_onehot_dist,
+)
 from code.data import generate_negative_example, read_pdb, make_data
 
 project_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
@@ -63,11 +70,51 @@ class CustomDataset_v2(Dataset):
         out_ligand = one_hot_smiles(
             self.df_ligands[self.df_ligands["LID"] == lid]["Smiles"].values[0]
         )
-        # print(out_ligand.shape)
         out_ligand = out_ligand.reshape(200, 67)
         out_protein = process_protein_group(pid, self.path, self.df_centroids)
-        # print(out_protein.shape)
         out_protein = out_protein.reshape(540, 5)
+        return out_ligand, out_protein, target
+
+
+class CustomDataset_v3(Dataset):
+    def __init__(
+        self, df_pair, df_ligands, df_centroids, path, distance=False, sort=False
+    ):
+        self.df_pair = df_pair
+        self.df_ligands = df_ligands
+        self.df_centroids = df_centroids
+        self.path = path
+        self.distance = distance
+        self.sort = sort
+
+    def __len__(self):
+        return len(self.df_pair)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        pid = self.df_pair["PID"][idx]
+        lid = self.df_pair["LID"][idx]
+        target = np.array([self.df_pair["target"][idx]])
+
+        out_ligand = one_hot_smiles(
+            self.df_ligands[self.df_ligands["LID"] == lid]["Smiles"].values[0]
+        )
+
+        out_ligand = out_ligand.reshape(200, -1)
+        if self.distance and self.sort:
+            out_protein = process_protein_group_onehot_dist(
+                pid, self.path, self.df_centroids, sort=True
+            )
+        elif self.distance and not self.sort:
+            out_protein = process_protein_group_onehot_dist(
+                pid, self.path, self.df_centroids, sort=False
+            )
+        elif not self.distance:
+            out_protein = process_protein_group_onehot(pid, self.path)
+
+        out_protein = out_protein.reshape(540, -1)
         return out_ligand, out_protein, target
 
 
@@ -85,6 +132,8 @@ def train(
     data_path,
     model_path,
     save_best_epoch,
+    distance=False,
+    sort=False,
 ):
     pdb_path = os.path.join(data_path, "pdbs")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -118,6 +167,16 @@ def train(
             test_dataset, batch_size=batch_size, shuffle=True, num_workers=1
         )
         model = MyProInceptionNet().to(device)
+    elif name == "mydilatednet":
+        train_dataset = CustomDataset_v3(df_train, df_ligands, df_centroids, pdb_path)
+        trainloader = DataLoader(
+            train_dataset, batch_size=batch_size, shuffle=True, num_workers=1
+        )
+        test_dataset = CustomDataset_v3(df_test, df_ligands, df_centroids, pdb_path)
+        testloader = DataLoader(
+            test_dataset, batch_size=batch_size, shuffle=True, num_workers=1
+        )
+        model = MyDilatedNet().to(device)
     else:
         raise NotImplementedError
 
@@ -171,7 +230,9 @@ def train(
 @click.argument("name", type=str)
 @click.argument("model_path_name", type=str)
 @click.argument("num_epoch", type=int)
-def main(name, model_path_name, num_epoch):
+@click.argument("distance", type=bool, required=False)
+@click.argument("sort", type=bool, required=False)
+def main(name, model_path_name, num_epoch, distance=False, sort=False):
     print("--------- reading data ---------")
     data_path = os.path.join(project_path, "dataset_20220217_2")
     df_train = pd.read_csv(os.path.join(data_path, "train_neg2_perct0.05.csv"))
@@ -203,6 +264,8 @@ def main(name, model_path_name, num_epoch):
         data_path=data_path,
         model_path=model_path,
         save_best_epoch=save_best_epoch,
+        distance=distance,
+        sort=sort,
     )
 
 
