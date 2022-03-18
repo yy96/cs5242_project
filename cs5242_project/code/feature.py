@@ -407,3 +407,79 @@ def process_protein_group(pid, pid_path, df_centroids, max_length=540):
         combined_matrix_pad = combined_matrix[0:max_length, :]
 
     return combined_matrix_pad.astype(float)
+
+
+def voxel(coord_mat, protein_grp_features, MAX_DIST, GRID_RESOLUTION):
+    # coord_mat = pdf_info["coords"]
+    # PCA on protein coordinates
+    columns_mean = np.mean(coord_mat, axis=1).reshape(3, 1)
+    centered_coords = coord_mat - columns_mean
+    cov_matrix = np.cov(centered_coords)
+    assert cov_matrix.shape == (3, 3)
+    _, rotation_mat = np.linalg.eig(cov_matrix)
+    new_coords = (coord_mat.T).dot(rotation_mat)
+    new_coords = new_coords.T
+    assert new_coords.shape == coord_mat.shape
+
+    # prepare atome list
+    # atomtype_ls = pdf_info["atom_type"]
+    # ‘C’ is interpreted as hydrophobic, while ‘O’ and ‘N’ are interpreted as polar.
+    # is_hydrophobic_ls = np.array([item == "C" for item in atomtype_ls])
+    # is_polar_ls = np.array([item in ["O", "N"] for item in atomtype_ls])
+    # atom_features = np.array([is_hydrophobic_ls, is_polar_ls])  # (2, 243)
+
+    # convert the data into cube
+    center = np.mean(new_coords, axis=0)
+    centered_coords = new_coords - center
+    translation_distance = MAX_DIST / 2 * GRID_RESOLUTION
+    scaled_coords = (centered_coords + translation_distance) / GRID_RESOLUTION
+    scaled_coords = scaled_coords.round().astype(int)
+
+    in_box = ((scaled_coords >= 0) & (scaled_coords < MAX_DIST)).all(axis=0)  # (243)
+    cube = np.zeros(
+        (MAX_DIST, MAX_DIST, MAX_DIST, protein_grp_features.shape[0]), dtype=np.float32
+    )
+    for (x, y, z), f in zip(
+        scaled_coords[:, in_box].T, protein_grp_features[:, in_box].T
+    ):
+        cube[x, y, z] += f
+    return cube  # (20,20,20,2)
+
+
+def process_protein_voxel(
+    pid, pid_path, MAX_DIST=20, GRID_RESOLUTION=1, MAX_LENGTH=540
+):
+    (
+        X_list,
+        Y_list,
+        Z_list,
+        atomtype_list,
+        atomgroup_list,
+        aminogroup_list,
+        chain_list,
+    ) = read_pdb_group(f"{pid_path}/{pid}.pdb")
+    unique_group, group_index = np.unique(atomgroup_list, return_index=True)
+    unique_amino_list = [aminogroup_list[i] for i in group_index]
+    unique_chain_list = [chain_list[i] for i in group_index]
+    group_coords_X = [X_list[i] for i in group_index]
+    group_coords_Y = [Y_list[i] for i in group_index]
+    group_coords_Z = [Z_list[i] for i in group_index]
+    amino_encode = one_hot_protein_group(unique_amino_list, "amino")
+    chain_encode = one_hot_protein_group(unique_chain_list, "chain")
+
+    protein_coords = convert_protein_list_to_matrix(
+        group_coords_X, group_coords_Y, group_coords_Z
+    )
+    if len(unique_group) > MAX_LENGTH:
+        protein_coords = protein_coords[:MAX_LENGTH, :]
+
+    pro_feature = np.concatenate((amino_encode, chain_encode), axis=1)
+    pro_feature_nopad = pro_feature[0 : len(unique_group), :]
+    voxel_result = voxel(
+        protein_coords.transpose(),
+        pro_feature_nopad.transpose(),
+        MAX_DIST,
+        GRID_RESOLUTION,
+    )
+
+    return voxel_result
