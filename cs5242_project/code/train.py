@@ -122,14 +122,20 @@ class CustomDataset_v3(Dataset):
 
 class CustomDataset_v4(Dataset):
     def __init__(
-        self, df_pair, df_ligands, df_centroids, path, distance=False, sort=False
+        self,
+        df_pair,
+        df_ligands,
+        df_centroids,
+        path,
+        grid_resolution=1,
+        type="absolute",
     ):
         self.df_pair = df_pair
         self.df_ligands = df_ligands
         self.df_centroids = df_centroids
         self.path = path
-        self.distance = distance
-        self.sort = sort
+        self.type = type
+        self.grid_resolution = grid_resolution
 
     def __len__(self):
         return len(self.df_pair)
@@ -148,7 +154,11 @@ class CustomDataset_v4(Dataset):
         out_ligand = out_ligand.reshape(200, -1)
 
         out_protein = process_protein_voxel(
-            pid, self.path, MAX_DIST=20, GRID_RESOLUTION=1
+            pid,
+            self.path,
+            MAX_DIST=20,
+            GRID_RESOLUTION=self.grid_resolution,
+            type=self.type,
         )
 
         return out_ligand, out_protein, target
@@ -223,6 +233,20 @@ def train(
             train_dataset, batch_size=batch_size, shuffle=True, num_workers=1
         )
         test_dataset = CustomDataset_v4(df_test, df_ligands, df_centroids, pdb_path)
+        testloader = DataLoader(
+            test_dataset, batch_size=batch_size, shuffle=True, num_workers=1
+        )
+        model = MyDilatedVoxelNet().to(device)
+    elif name == "mydilatedvoxelrelativenet":
+        train_dataset = CustomDataset_v4(
+            df_train, df_ligands, df_centroids, pdb_path, type="relative"
+        )
+        trainloader = DataLoader(
+            train_dataset, batch_size=batch_size, shuffle=True, num_workers=1
+        )
+        test_dataset = CustomDataset_v4(
+            df_test, df_ligands, df_centroids, pdb_path, type="relative"
+        )
         testloader = DataLoader(
             test_dataset, batch_size=batch_size, shuffle=True, num_workers=1
         )
