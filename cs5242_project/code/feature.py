@@ -1,4 +1,5 @@
 from itertools import chain
+from matplotlib import scale
 import numpy as np
 
 
@@ -355,10 +356,13 @@ def process_protein_group_onehot_dist(
     protein_coords = convert_protein_list_to_matrix(
         group_coords_X, group_coords_Y, group_coords_Z
     )
+    if len(unique_group) > 540:
+        protein_coords = protein_coords[:540, :]
     centroid_coordinate = df_centroids[df_centroids["PID"] == pid].iloc[0, 1:4].values
     euclidean_dist = np.sum(
         np.square(protein_coords - centroid_coordinate), axis=1
     ).reshape(-1, 1)
+
     euclidean_dist = np.pad(
         euclidean_dist,
         [(0, max_length - euclidean_dist.shape[0]), (0, 0)],
@@ -372,7 +376,7 @@ def process_protein_group_onehot_dist(
     if sort:
         combined_matrix = combined_matrix[combined_matrix[:, -1].argsort()]
 
-    return combined_matrix
+    return combined_matrix.astype(float)
 
 
 def process_protein_group(pid, pid_path, df_centroids, max_length=540):
@@ -446,8 +450,73 @@ def voxel(coord_mat, protein_grp_features, MAX_DIST, GRID_RESOLUTION):
     return cube  # (20,20,20,2)
 
 
+def _values_range(spatial_coordinates):
+    """
+    Return the extreme (maximum, minimum) values for atoms coordinates.
+
+    :param spatial_coordinates: np.ndarray of size (nb_atoms, 3)
+    :return: extreme values for each coordinates x, y, z
+    """
+    x_min = np.min(spatial_coordinates[:, 0])
+    y_min = np.min(spatial_coordinates[:, 1])
+    z_min = np.min(spatial_coordinates[:, 2])
+
+    x_max = np.max(spatial_coordinates[:, 0])
+    y_max = np.max(spatial_coordinates[:, 1])
+    z_max = np.max(spatial_coordinates[:, 2])
+
+    return x_min, x_max, y_min, y_max, z_min, z_max
+
+
+def voxel_relative(coord_mat, protein_grp_features, MAX_DIST, GRID_RESOLUTION):
+    # coord_mat = pdf_info["coords"]
+    # PCA on protein coordinates
+    columns_mean = np.mean(coord_mat, axis=1).reshape(3, 1)
+    centered_coords = coord_mat - columns_mean
+    cov_matrix = np.cov(centered_coords)
+    assert cov_matrix.shape == (3, 3)
+    _, rotation_mat = np.linalg.eig(cov_matrix)
+    new_coords = (coord_mat.T).dot(rotation_mat)
+
+    x_min, x_max, y_min, y_max, z_min, z_max = _values_range(new_coords)
+
+    # Finding the maximum range between extreme points on each coordinates
+    x_range = x_max - x_min
+    y_range = y_max - y_min
+    z_range = z_max - z_min
+
+    # If we want to keep the proportion, we can scale adequately
+    max_range = max([x_range, y_range, z_range])
+    x_range = max_range
+    y_range = max_range
+    z_range = max_range
+
+    # Scaling coordinates to be in the cube [0,res]^3 then flooring
+
+    scaled_coords = (new_coords * 0).astype(int)
+    eps = 10e-4  # To be sure to round down on exact position
+    scaled_coords[:, 0] = np.floor(
+        (new_coords[:, 0] - x_min) / (x_range + eps) * MAX_DIST
+    ).astype(int)
+    scaled_coords[:, 1] = np.floor(
+        (new_coords[:, 1] - y_min) / (y_range + eps) * MAX_DIST
+    ).astype(int)
+    scaled_coords[:, 2] = np.floor(
+        (new_coords[:, 2] - z_min) / (z_range + eps) * MAX_DIST
+    ).astype(int)
+
+    cube = np.zeros(
+        (MAX_DIST, MAX_DIST, MAX_DIST, protein_grp_features.shape[1]), dtype=np.float32
+    )
+    # Filling the cube with the features
+    for (x, y, z), f in zip(scaled_coords, protein_grp_features):
+        cube[x, y, z] += f
+
+    return cube
+
+
 def process_protein_voxel(
-    pid, pid_path, MAX_DIST=20, GRID_RESOLUTION=1, MAX_LENGTH=540
+    pid, pid_path, MAX_DIST=20, GRID_RESOLUTION=1, MAX_LENGTH=540, type="absolute"
 ):
     (
         X_list,
@@ -475,11 +544,19 @@ def process_protein_voxel(
 
     pro_feature = np.concatenate((amino_encode, chain_encode), axis=1)
     pro_feature_nopad = pro_feature[0 : len(unique_group), :]
-    voxel_result = voxel(
-        protein_coords.transpose(),
-        pro_feature_nopad.transpose(),
-        MAX_DIST,
-        GRID_RESOLUTION,
-    )
+    if type == "absolute":
+        voxel_result = voxel(
+            protein_coords.transpose(),
+            pro_feature_nopad.transpose(),
+            MAX_DIST,
+            GRID_RESOLUTION,
+        )
+    elif type == "relative":
+        voxel_result = voxel_relative(
+            protein_coords.transpose(),
+            pro_feature_nopad,
+            MAX_DIST,
+            GRID_RESOLUTION,
+        )
 
     return voxel_result
